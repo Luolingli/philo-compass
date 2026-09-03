@@ -1,0 +1,110 @@
+:root {
+  --bg: #faf8f2;
+  --card: #fffdf8;
+  --ink: #2b2620;
+  --muted: #8a8175;
+  --line: #e8e0d2;
+  --green: #2f6f4e;
+  --gold: #b98a2f;
+  --red: #a33b3b;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Noto Sans SC', system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  line-height: 1.7;
+}
+
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+
+.topbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 20px; border-bottom: 1px solid var(--line);
+  background: var(--card); position: sticky; top: 0; z-index: 10;
+}
+.logo { font-weight: 800; font-size: 18px; cursor: pointer; }
+.topbar nav { display: flex; gap: 8px; }
+
+button { font-family: inherit; cursor: pointer; }
+.link { background: none; border: none; color: var(--green); font-size: 15px; padding: 6px 10px; }
+.link:hover { text-decoration: underline; }
+.link.back { margin-top: 12px; }
+
+.wrap { width: 100%; max-width: 760px; margin: 0 auto; padding: 24px 16px 60px; }
+
+.hero h1 { font-size: 30px; line-height: 1.4; margin: 24px 0 12px; }
+.sub { color: var(--muted); font-size: 16px; }
+
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 16px 18px; margin: 14px 0; box-shadow: 0 2px 8px rgba(60, 50, 30, 0.05);
+}
+.card h2 { margin: 6px 0 12px; font-size: 20px; }
+.card .mod {
+  display: inline-block; font-size: 12px; color: var(--card); background: var(--green);
+  border-radius: 20px; padding: 2px 12px; margin-bottom: 4px;
+}
+.card.notice { border-left: 4px solid var(--green); }
+
+.namecard label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+.namecard input, .filters input {
+  width: 100%; font-size: 17px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink);
+}
+.filters select {
+  font-size: 15px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff;
+}
+
+.row { display: flex; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+.row.share { position: sticky; bottom: 12px; background: var(--bg); padding: 10px 0; }
+
+.primary {
+  background: var(--green); color: #fff; border: none; border-radius: 10px;
+  font-size: 17px; font-weight: 700; padding: 14px 26px;
+}
+.primary:hover { filter: brightness(1.08); }
+.ghost {
+  background: transparent; color: var(--green); border: 1.5px solid var(--green);
+  border-radius: 10px; font-size: 16px; padding: 12px 22px;
+}
+
+.tip { color: var(--muted); font-size: 13px; margin-top: 16px; }
+
+.progress { margin: 8px 0 4px; font-size: 14px; color: var(--muted); }
+.progress .bar { height: 8px; background: var(--line); border-radius: 6px; overflow: hidden; margin-top: 6px; }
+.progress .bar i { display: block; height: 100%; background: var(--green); transition: width 0.25s; }
+
+.likert { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.likert button {
+  border: 1.5px solid var(--line); background: #fff; border-radius: 10px;
+  font-size: 16px; padding: 12px; color: var(--ink); text-align: center;
+}
+.likert button:hover { border-color: var(--green); }
+.likert button.sel { background: var(--green); border-color: var(--green); color: #fff; font-weight: 700; }
+
+.report h2 { margin-top: 8px; }
+.ism { border-left: 5px solid var(--gold); }
+.ism h3 { margin: 6px 0; font-size: 23px; }
+.ism .en { color: var(--muted); font-size: 13px; }
+.badge {
+  display: inline-block; font-size: 12px; background: var(--gold); color: #fff;
+  border-radius: 20px; padding: 2px 12px;
+}
+
+.tbl { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 10px; }
+.tbl td, .tbl th { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; }
+
+.phil .sim { float: right; color: var(--green); font-weight: 800; }
+.meta { color: var(--muted); font-size: 13px; }
+.bio { font-size: 14px; color: #5a5348; }
+
+.grid { display: grid; grid-template-columns: 1fr; gap: 4px; }
+@media (min-width: 640px) { .grid { grid-template-columns: 1fr 1fr; } }
+.filters { align-items: center; }
+.filters input { flex: 1; }
+
+.foot { text-align: center; color: var(--muted); font-size: 13px; padding: 24px; margin-top: auto; }
