@@ -3,7 +3,8 @@ import type { RefObject } from 'react';
 import type { EChartsOption } from 'echarts';
 import { DIMS } from './data/dimensions';
 import { PHILOSOPHERS } from './data/philosophers';
-import { ENV_QUESTIONS, THOUGHT_QUESTIONS } from './data/questions';
+import { schoolById } from './data/schools';
+import { DEEP_QUESTIONS, ENV_QUESTIONS, QUESTION_TAGS, THOUGHT_QUESTIONS } from './data/questions';
 import {
   compass,
   decodeShare,
@@ -29,8 +30,14 @@ type Step = 'home' | 'quiz' | 'env' | 'result' | 'gallery';
 /** null = 未作答(界面上五个选项全空白)，作答后才高亮 */
 export type Ans = (number | null)[];
 
-const LS_KEY = 'philo-compass-v2';
-const BLANK_THOUGHT: Ans = Array(60).fill(null);
+export type TestVersion = 'standard' | 'deep';
+export const VERSION_LABEL: Record<TestVersion, string> = {
+  standard: '标准版 · 60题',
+  deep: '深度版 · 120题',
+};
+
+const LS_KEY = 'philo-compass-v3';
+const BLANK_THOUGHT: Ans = Array(120).fill(null);
 const BLANK_ENV: Ans = Array(15).fill(null);
 
 /** 长度归一化(兼容旧存档与分享链接) */
@@ -40,12 +47,17 @@ function norm(a: unknown, n: number): Ans {
   return arr.slice(0, n).map((v) => (typeof v === 'number' ? v : null));
 }
 
-function loadLS(): { name: string; thought: Ans; env: Ans } | null {
+function loadLS(): { name: string; thought: Ans; env: Ans; version: TestVersion } | null {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return null;
     const o = JSON.parse(raw);
-    return { name: o.name ?? '', thought: norm(o.thought, 60), env: norm(o.env, 15) };
+    return {
+      name: o.name ?? '',
+      thought: norm(o.thought, 120),
+      env: norm(o.env, 15),
+      version: o.version === 'deep' ? 'deep' : 'standard',
+    };
   } catch {
     return null;
   }
@@ -54,6 +66,7 @@ function loadLS(): { name: string; thought: Ans; env: Ans } | null {
 export default function App() {
   const [step, setStep] = useState<Step>('home');
   const [name, setName] = useState('');
+  const [version, setVersion] = useState<TestVersion>(() => loadLS()?.version ?? 'standard');
   const [thought, setThought] = useState<Ans>(() => loadLS()?.thought ?? [...BLANK_THOUGHT]);
   const [envAns, setEnvAns] = useState<Ans>(() => loadLS()?.env ?? [...BLANK_ENV]);
   const [qi, setQi] = useState(0);
@@ -63,6 +76,8 @@ export default function App() {
   const [copied, setCopied] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
+  const QS = version === 'deep' ? DEEP_QUESTIONS : THOUGHT_QUESTIONS;
+
   useEffect(() => {
     const saved = loadLS();
     if (saved?.name) setName(saved.name);
@@ -71,24 +86,26 @@ export default function App() {
       const p = decodeShare(m);
       if (p) {
         setName(p.n);
-        setThought(norm(p.t, 60));
+        setThought(norm(p.t, 120));
         setEnvAns(norm(p.e, 15));
+        setVersion(p.v ?? 'standard');
         setStep('result');
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify({ name, thought, env: envAns }));
+      localStorage.setItem(LS_KEY, JSON.stringify({ name, thought, env: envAns, version }));
     } catch {
       /* ignore */
     }
-  }, [name, thought, envAns]);
+  }, [name, thought, envAns, version]);
 
   const result = useMemo(() => {
     if (step !== 'result') return null;
-    const user = scoreThought(thought);
+    const user = scoreThought(thought.slice(0, QS.length), QS);
     const { phils, schools } = rankAll(user);
     const shares = schoolShares(schools);
     const cp = compass(user);
@@ -100,14 +117,18 @@ export default function App() {
       ENV_QUESTIONS.map((q) => q.dir),
     );
     return { user, phils, schools, shares, cp, naming, fit };
-  }, [step, thought, envAns, name]);
+  }, [step, thought, envAns, name, QS]);
 
   const answerThought = (v: number) => {
     const next = [...thought];
     next[qi] = v;
     setThought(next);
-    if (qi < THOUGHT_QUESTIONS.length - 1) setQi(qi + 1);
-    else setStep('env');
+    if (qi < QS.length - 1) setQi(qi + 1);
+    else {
+      const eq = envAns.findIndex((a) => a === null);
+      setEi(eq === -1 ? 0 : eq);
+      setStep('env');
+    }
   };
 
   const answerEnv = (v: number) => {
@@ -123,9 +144,9 @@ export default function App() {
 
   const shareUrl = useMemo(() => {
     if (step !== 'result' || !result) return '';
-    const code = encodeShare({ n: name, u: result.user, e: envAns, t: thought });
+    const code = encodeShare({ n: name, u: result.user, e: envAns, t: thought.slice(0, QS.length), v: version });
     return `${window.location.origin}${window.location.pathname}?r=${code}`;
-  }, [step, result, name, envAns, thought]);
+  }, [step, result, name, envAns, thought, version, QS]);
 
   const copyLink = async () => {
     try {
@@ -144,7 +165,7 @@ export default function App() {
 
   /** 从首页进入：有未答题则断点续答，都答完则直达报告 */
   const startOrResume = () => {
-    const tq = thought.findIndex((v) => v === null);
+    const tq = thought.slice(0, QS.length).findIndex((v) => v === null);
     if (tq !== -1) {
       setQi(tq);
       setStep('quiz');
@@ -156,6 +177,20 @@ export default function App() {
       } else {
         setStep('result');
       }
+    }
+    window.scrollTo(0, 0);
+  };
+
+  const startVersion = (v: TestVersion) => {
+    setVersion(v);
+    const qs = v === 'deep' ? DEEP_QUESTIONS : THOUGHT_QUESTIONS;
+    const tq = thought.slice(0, qs.length).findIndex((a) => a === null);
+    if (tq !== -1) {
+      setQi(tq);
+      setStep('quiz');
+    } else {
+      setEi(0);
+      setStep('env');
     }
     window.scrollTo(0, 0);
   };
@@ -194,7 +229,7 @@ export default function App() {
         <main className="wrap hero">
           <h1>测测你的思想，属于哪位哲学家？</h1>
           <p className="sub">
-            60 道思想题 × 15 道环境题，覆盖中西印伊 100 位哲学家与 50+
+            思想卷 × 15 道环境题，覆盖中西印伊 100 位哲学家与 50+
             流派(含政治光谱)。像 MBTI 一样看清你的思想成分，溯源守正、
             推陈出新、扬弃综合——成分混杂者，还将获得以你名字命名的主义。
           </p>
@@ -207,12 +242,18 @@ export default function App() {
               placeholder="例如：李 / 阿哲"
             />
           </div>
-          <div className="row">
-            <button className="primary" onClick={startOrResume}>
-              {thought.some((v) => v !== null) || envAns.some((v) => v !== null)
-                ? '继续测试 / 查看报告'
-                : '开始思想测试（约8分钟）'}
+          <div className="card ver">
+            <button className="verbtn" onClick={() => startVersion('standard')}>
+              <b>标准版 · 60 题</b>
+              <span>约8分钟，快速出报告，适合分享传播</span>
             </button>
+            <button className="verbtn deep" onClick={() => startVersion('deep')}>
+              <b>深度版 · 120 题</b>
+              <span>约18分钟，覆盖信仰神学/东方修行/政治实践等8大纵深模块，溯源更精细</span>
+            </button>
+          </div>
+          <div className="row">
+            <button className="ghost" onClick={startOrResume}>继续上次 / 查看报告</button>
             <button className="ghost" onClick={() => setStep('gallery')}>先逛哲学家画廊</button>
           </div>
           <p className="tip">全本地计算，结果只存你的浏览器，可一键生成分享链接与图片。娱乐启发向，非学术诊断。</p>
@@ -221,11 +262,12 @@ export default function App() {
 
       {step === 'quiz' && (
         <main className="wrap">
-          <QuizProgress cur={qi} total={THOUGHT_QUESTIONS.length} label="思想卷" done={thought.filter((v) => v !== null).length} />
+          <QuizProgress cur={qi} total={QS.length} label={`思想卷（${VERSION_LABEL[version]}）`} done={thought.slice(0, QS.length).filter((v) => v !== null).length} />
           <QuestionCard
-            mod={THOUGHT_QUESTIONS[qi].mod}
-            text={`${qi + 1}. ${THOUGHT_QUESTIONS[qi].text}`}
+            mod={QS[qi].mod}
+            text={`${qi + 1}. ${QS[qi].text}`}
             value={thought[qi]}
+            tags={(QUESTION_TAGS[QS[qi].id] ?? []).map((id) => schoolById(id).name)}
             onPick={answerThought}
             onBack={qi > 0 ? () => setQi(qi - 1) : undefined}
           />
@@ -254,7 +296,7 @@ export default function App() {
       {step === 'result' && result && (
         <main className="wrap">
           <div className="report">
-            <h2>{name || '无名'}氏哲学报告</h2>
+            <h2>{name || '无名'}氏哲学报告 <span className="verbadge">{VERSION_LABEL[version]}</span></h2>
             <div className="card ism">
               <div className="badge">{result.naming.traced ? '守正溯源型' : '综合命名型'}</div>
               <h3>{result.naming.ism}</h3>
@@ -336,6 +378,7 @@ export default function App() {
               <ShareCard
                 cardRef={cardRef}
                 name={name || '无名'}
+                versionLabel={VERSION_LABEL[version]}
                 naming={result.naming}
                 phils={result.phils.slice(0, 3).map((r) => ({ name: r.p.name, sim: Math.round(r.sim * 100), quote: r.p.quote }))}
                 cp={result.cp}
@@ -421,9 +464,10 @@ function fitReading(dim: number, demand: number, mine: number): string {
 }
 
 /** 固定 720px 宽的竖版分享卡：所见即导出所得，保证高清 */
-function ShareCard({ cardRef, name, naming, phils, cp, fitTotal, fitLevel }: {
+function ShareCard({ cardRef, name, versionLabel, naming, phils, cp, fitTotal, fitLevel }: {
   cardRef: RefObject<HTMLDivElement | null>;
   name: string;
+  versionLabel: string;
   naming: { traced: boolean; ism: string; ismEn: string; manifesto: string };
   phils: { name: string; sim: number; quote: string }[];
   cp: { x: number; y: number };
@@ -443,7 +487,7 @@ function ShareCard({ cardRef, name, naming, phils, cp, fitTotal, fitLevel }: {
         }}
       >
         <div style={{ fontSize: 22, fontWeight: 800 }}>🧭 哲学罗盘</div>
-        <div style={{ fontSize: 15, color: '#8a8175', marginTop: 4 }}>{name}氏哲学报告 · 本地测试</div>
+        <div style={{ fontSize: 15, color: '#8a8175', marginTop: 4 }}>{name}氏哲学报告 · {versionLabel} · 本地测试</div>
         <div
           style={{
             display: 'inline-block', fontSize: 14, background: '#b98a2f', color: '#fff',
@@ -476,14 +520,17 @@ function ShareCard({ cardRef, name, naming, phils, cp, fitTotal, fitLevel }: {
   );
 }
 
-function QuestionCard({ mod, text, value, onPick, onBack }: {
-  mod: string; text: string; value: number | null;
+function QuestionCard({ mod, text, value, tags, onPick, onBack }: {
+  mod: string; text: string; value: number | null; tags?: string[];
   onPick: (v: number) => void; onBack?: () => void;
 }) {
   return (
     <div className="card q">
       <span className="mod">{mod}</span>
       <h2>{text}</h2>
+      {tags && tags.length > 0 && (
+        <p className="tags">本题指向：{tags.join(' · ')}</p>
+      )}
       <div className="likert">
         {LIKERT.map((o) => (
           <button key={o.value} className={value === o.value ? 'sel' : ''} onClick={() => onPick(o.value)}>

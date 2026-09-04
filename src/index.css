@@ -102,6 +102,25 @@ button { font-family: inherit; cursor: pointer; }
 .meta { color: var(--muted); font-size: 13px; }
 .bio { font-size: 14px; color: #5a5348; }
 
+.ver { display: flex; gap: 12px; }
+.verbtn {
+  flex: 1; display: flex; flex-direction: column; gap: 4px; text-align: left;
+  border: 2px solid var(--line); background: #fff; border-radius: 12px; padding: 14px;
+  color: var(--ink);
+}
+.verbtn b { font-size: 17px; }
+.verbtn span { font-size: 13px; color: var(--muted); }
+.verbtn:hover { border-color: var(--green); }
+.verbtn.deep { border-color: var(--gold); }
+@media (max-width: 640px) { .ver { flex-direction: column; } }
+
+.tags { font-size: 12px; color: var(--muted); margin: 2px 0 0; }
+.verbadge {
+  font-size: 13px; font-weight: 400; color: var(--green);
+  border: 1px solid var(--green); border-radius: 20px; padding: 2px 12px;
+  vertical-align: middle; white-space: nowrap;
+}
+
 .howto { font-size: 14px; color: #5a5348; background: #f6f1e5; border-radius: 8px; padding: 10px 12px; }
 .howto b { color: var(--green); }
 .cardwrap { margin: 14px 0; }

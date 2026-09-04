@@ -1,7 +1,7 @@
 import { DIM_COUNT } from '../data/dimensions';
 import { PHILOSOPHERS, type Philosopher } from '../data/philosophers';
 import { SCHOOLS, type School } from '../data/schools';
-import { THOUGHT_QUESTIONS } from '../data/questions';
+import { THOUGHT_QUESTIONS, type ThoughtQ } from '../data/questions';
 
 export type Vec = number[];
 
@@ -29,11 +29,11 @@ function cosine(a: Vec, b: Vec): number {
   return dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
-/** 思想卷作答(-2..2,长60,null=未作答按0计) → 用户向量 [-2,2] */
-export function scoreThought(answers: (number | null)[]): Vec {
+/** 思想卷作答(-2..2,null=未作答按0计) → 用户向量 [-2,2]，题量可变(标准60/深度120) */
+export function scoreThought(answers: (number | null)[], qs: ThoughtQ[] = THOUGHT_QUESTIONS): Vec {
   const total = new Array(DIM_COUNT).fill(0);
   const max = new Array(DIM_COUNT).fill(0);
-  THOUGHT_QUESTIONS.forEach((q, i) => {
+  qs.forEach((q, i) => {
     const a = answers[i] ?? 0;
     const parts = [q.a, ...(q.b ? [q.b] : [])];
     for (const [d, w] of parts) {
@@ -222,16 +222,17 @@ export function scoreFit(
 
 // ---------- 分享编码 ----------
 
-export interface SharePayload { n: string; u: Vec; e: (number | null)[]; t: (number | null)[] }
+export interface SharePayload { n: string; u: Vec; e: (number | null)[]; t: (number | null)[]; v?: 'standard' | 'deep' }
 
 export function encodeShare(p: SharePayload): string {
-  const s = JSON.stringify({ n: p.n, u: p.u.map((v) => Math.round(v * 100) / 100), e: p.e, t: p.t });
+  const s = JSON.stringify({ n: p.n, u: p.u.map((v) => Math.round(v * 100) / 100), e: p.e, t: p.t, v: p.v ?? 'standard' });
   return btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 export function decodeShare(code: string): SharePayload | null {
   try {
-    const b = code.replace(/-/g, '+').replace(/_/g, '/');
+    let b = code.replace(/-/g, '+').replace(/_/g, '/');
+    while (b.length % 4 !== 0) b += '='; // 补回编码时去掉的 padding
     return JSON.parse(decodeURIComponent(escape(atob(b))));
   } catch {
     return null;
