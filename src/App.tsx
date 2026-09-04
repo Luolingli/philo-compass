@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import type { EChartsOption } from 'echarts';
 import { DIMS } from './data/dimensions';
 import { PHILOSOPHERS } from './data/philosophers';
@@ -25,12 +26,26 @@ const LIKERT = [
 
 type Step = 'home' | 'quiz' | 'env' | 'result' | 'gallery';
 
-const LS_KEY = 'philo-compass-v1';
+/** null = 未作答(界面上五个选项全空白)，作答后才高亮 */
+export type Ans = (number | null)[];
 
-function loadLS(): { name: string; thought: number[]; env: number[] } | null {
+const LS_KEY = 'philo-compass-v2';
+const BLANK_THOUGHT: Ans = Array(60).fill(null);
+const BLANK_ENV: Ans = Array(15).fill(null);
+
+/** 长度归一化(兼容旧存档与分享链接) */
+function norm(a: unknown, n: number): Ans {
+  const arr = Array.isArray(a) ? [...a] : [];
+  while (arr.length < n) arr.push(null);
+  return arr.slice(0, n).map((v) => (typeof v === 'number' ? v : null));
+}
+
+function loadLS(): { name: string; thought: Ans; env: Ans } | null {
   try {
     const raw = localStorage.getItem(LS_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    return { name: o.name ?? '', thought: norm(o.thought, 60), env: norm(o.env, 15) };
   } catch {
     return null;
   }
@@ -39,14 +54,14 @@ function loadLS(): { name: string; thought: number[]; env: number[] } | null {
 export default function App() {
   const [step, setStep] = useState<Step>('home');
   const [name, setName] = useState('');
-  const [thought, setThought] = useState<number[]>(() => loadLS()?.thought ?? Array(60).fill(0));
-  const [envAns, setEnvAns] = useState<number[]>(() => loadLS()?.env ?? Array(15).fill(0));
+  const [thought, setThought] = useState<Ans>(() => loadLS()?.thought ?? [...BLANK_THOUGHT]);
+  const [envAns, setEnvAns] = useState<Ans>(() => loadLS()?.env ?? [...BLANK_ENV]);
   const [qi, setQi] = useState(0);
   const [ei, setEi] = useState(0);
   const [galleryQ, setGalleryQ] = useState('');
   const [galleryR, setGalleryR] = useState('全部');
   const [copied, setCopied] = useState(false);
-  const reportRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const saved = loadLS();
@@ -56,8 +71,8 @@ export default function App() {
       const p = decodeShare(m);
       if (p) {
         setName(p.n);
-        setThought(p.t);
-        setEnvAns(p.e);
+        setThought(norm(p.t, 60));
+        setEnvAns(norm(p.e, 15));
         setStep('result');
       }
     }
@@ -127,12 +142,40 @@ export default function App() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const downloadPNG = async () => {
-    if (!reportRef.current) return;
+  /** 从首页进入：有未答题则断点续答，都答完则直达报告 */
+  const startOrResume = () => {
+    const tq = thought.findIndex((v) => v === null);
+    if (tq !== -1) {
+      setQi(tq);
+      setStep('quiz');
+    } else {
+      const eq = envAns.findIndex((v) => v === null);
+      if (eq !== -1) {
+        setEi(eq);
+        setStep('env');
+      } else {
+        setStep('result');
+      }
+    }
+    window.scrollTo(0, 0);
+  };
+
+  const resetAll = () => {
+    setThought([...BLANK_THOUGHT]);
+    setEnvAns([...BLANK_ENV]);
+    setQi(0);
+    setEi(0);
+    setStep('quiz');
+    window.scrollTo(0, 0);
+  };
+
+  /** 导出固定 720px 宽的分享卡(高清)，不再截超长整页 */
+  const downloadCard = async () => {
+    if (!cardRef.current) return;
     const { default: html2canvas } = await import('html2canvas');
-    const canvas = await html2canvas(reportRef.current, { backgroundColor: '#faf8f2', scale: 2 });
+    const canvas = await html2canvas(cardRef.current, { backgroundColor: '#faf8f2', scale: 3 });
     const a = document.createElement('a');
-    a.download = `${name || '无名'}氏哲学报告.png`;
+    a.download = `${name || '无名'}氏主义分享卡.png`;
     a.href = canvas.toDataURL('image/png');
     a.click();
   };
@@ -165,15 +208,10 @@ export default function App() {
             />
           </div>
           <div className="row">
-            <button
-              className="primary"
-              onClick={() => {
-                setQi(0);
-                setStep('quiz');
-                window.scrollTo(0, 0);
-              }}
-            >
-              开始思想测试（约8分钟）
+            <button className="primary" onClick={startOrResume}>
+              {thought.some((v) => v !== null) || envAns.some((v) => v !== null)
+                ? '继续测试 / 查看报告'
+                : '开始思想测试（约8分钟）'}
             </button>
             <button className="ghost" onClick={() => setStep('gallery')}>先逛哲学家画廊</button>
           </div>
@@ -183,7 +221,7 @@ export default function App() {
 
       {step === 'quiz' && (
         <main className="wrap">
-          <QuizProgress cur={qi} total={THOUGHT_QUESTIONS.length} label="思想卷" />
+          <QuizProgress cur={qi} total={THOUGHT_QUESTIONS.length} label="思想卷" done={thought.filter((v) => v !== null).length} />
           <QuestionCard
             mod={THOUGHT_QUESTIONS[qi].mod}
             text={`${qi + 1}. ${THOUGHT_QUESTIONS[qi].text}`}
@@ -202,7 +240,7 @@ export default function App() {
               <p>下面是独立的<b>环境量表</b>：描述你当下的生活环境（学校/单位/城市），用于测算你的哲学与环境的契合度。</p>
             </div>
           )}
-          <QuizProgress cur={ei} total={ENV_QUESTIONS.length} label="环境卷" />
+          <QuizProgress cur={ei} total={ENV_QUESTIONS.length} label="环境卷" done={envAns.filter((v) => v !== null).length} />
           <QuestionCard
             mod="生活环境"
             text={`${ei + 1}. ${ENV_QUESTIONS[ei].text}`}
@@ -215,7 +253,7 @@ export default function App() {
 
       {step === 'result' && result && (
         <main className="wrap">
-          <div ref={reportRef} className="report">
+          <div className="report">
             <h2>{name || '无名'}氏哲学报告</h2>
             <div className="card ism">
               <div className="badge">{result.naming.traced ? '守正溯源型' : '综合命名型'}</div>
@@ -270,23 +308,47 @@ export default function App() {
 
             <h3>七、与当下环境的契合度：{result.fit.total} 分 · {result.fit.level}</h3>
             <div className="card">
+              <p className="howto">
+                怎么读这张表：「<b>环境奖赏</b>」是你感受到的环境压力方向（由 15 道环境题算出，正数偏向每行的前一个词，负数偏向后一个词）；
+                「<b>你的立场</b>」是思想卷测出的你自己；「<b>契合</b>」是两者距离换算成的百分制。
+                重点看<b>红色条</b>和「拧巴」行——那就是你和环境最较劲的地方。
+              </p>
               <EChart height={300} option={fitOption(result.fit.axes.map((a) => ({ name: a.label, value: a.fit })))} />
               <p>{result.fit.advice}</p>
               <table className="tbl">
-                <thead><tr><th>维度</th><th>环境要求</th><th>你的位置</th><th>契合</th></tr></thead>
+                <thead><tr><th>维度</th><th>环境奖赏</th><th>你的立场</th><th>契合</th><th>解读</th></tr></thead>
                 <tbody>
                   {result.fit.axes.map((a) => (
-                    <tr key={a.label}><td>{a.label}</td><td>{a.demand}</td><td>{a.mine}</td><td>{a.fit}%</td></tr>
+                    <tr key={a.label}>
+                      <td>{a.label}</td>
+                      <td>{sideWord(a.dim, a.demand)}<span className="meta"> {fmtV(a.demand)}</span></td>
+                      <td>{sideWord(a.dim, a.mine)}<span className="meta"> {fmtV(a.mine)}</span></td>
+                      <td>{a.fit}%</td>
+                      <td>{fitReading(a.dim, a.demand, a.mine)}</td>
+                    </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            <h3>八、分享卡（保存图片即得高清图）</h3>
+            <div className="cardwrap">
+              <ShareCard
+                cardRef={cardRef}
+                name={name || '无名'}
+                naming={result.naming}
+                phils={result.phils.slice(0, 3).map((r) => ({ name: r.p.name, sim: Math.round(r.sim * 100), quote: r.p.quote }))}
+                cp={result.cp}
+                fitTotal={result.fit.total}
+                fitLevel={result.fit.level}
+              />
             </div>
           </div>
 
           <div className="row share">
             <button className="primary" onClick={copyLink}>{copied ? '已复制 ✓' : '复制分享链接'}</button>
-            <button className="ghost" onClick={downloadPNG}>导出报告图片</button>
-            <button className="ghost" onClick={() => { setQi(0); setEi(0); setStep('quiz'); window.scrollTo(0, 0); }}>重新测试</button>
+            <button className="ghost" onClick={downloadCard}>保存分享卡图片</button>
+            <button className="ghost" onClick={resetAll}>清空重测</button>
           </div>
         </main>
       )}
@@ -324,17 +386,98 @@ export default function App() {
   );
 }
 
-function QuizProgress({ cur, total, label }: { cur: number; total: number; label: string }) {
+function QuizProgress({ cur, total, label, done }: { cur: number; total: number; label: string; done: number }) {
   return (
     <div className="progress">
-      <span>{label} {cur + 1}/{total}</span>
-      <div className="bar"><i style={{ width: `${Math.round(((cur + 1) / total) * 100)}%` }} /></div>
+      <span>{label} {cur + 1}/{total}　已答 {done}/{total}</span>
+      <div className="bar"><i style={{ width: `${Math.round((done / total) * 100)}%` }} /></div>
+    </div>
+  );
+}
+
+/** 维度数值 → 白话站位词 */
+function sideWord(dim: number, v: number): string {
+  const d = DIMS[dim];
+  if (v > 0.5) return d.pos;
+  if (v < -0.5) return d.neg;
+  return '居中';
+}
+
+function fmtV(v: number): string {
+  return `${v > 0 ? '+' : ''}${v}`;
+}
+
+/** 单维度契合的一句话解读 */
+function fitReading(dim: number, demand: number, mine: number): string {
+  const d = DIMS[dim];
+  const s = (v: number) => (v > 0.5 ? 'pos' : v < -0.5 ? 'neg' : 'mid');
+  const w = (k: string) => (k === 'pos' ? d.pos : k === 'neg' ? d.neg : '中间');
+  const es = s(demand);
+  const ms = s(mine);
+  if (es === ms) return `同频：环境与你都偏「${w(ms)}」`;
+  if (es === 'mid') return `相安无事：环境无要求，你偏「${w(ms)}」`;
+  if (ms === 'mid') return `可进可退：环境要「${w(es)}」，你居中`;
+  return `拧巴：环境要「${w(es)}」，你却向「${w(ms)}」`;
+}
+
+/** 固定 720px 宽的竖版分享卡：所见即导出所得，保证高清 */
+function ShareCard({ cardRef, name, naming, phils, cp, fitTotal, fitLevel }: {
+  cardRef: RefObject<HTMLDivElement | null>;
+  name: string;
+  naming: { traced: boolean; ism: string; ismEn: string; manifesto: string };
+  phils: { name: string; sim: number; quote: string }[];
+  cp: { x: number; y: number };
+  fitTotal: number;
+  fitLevel: string;
+}) {
+  const econ = cp.x < 0 ? `经济左 ${cp.x}` : `经济右 +${cp.x}`;
+  const auth = cp.y > 0 ? `威权 +${cp.y}` : `自由 ${cp.y}`;
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <div
+        ref={cardRef}
+        style={{
+          width: 720, background: '#fffdf8', color: '#2b2620',
+          border: '1px solid #e8e0d2', borderRadius: 16, padding: '40px 44px',
+          fontFamily: 'inherit',
+        }}
+      >
+        <div style={{ fontSize: 22, fontWeight: 800 }}>🧭 哲学罗盘</div>
+        <div style={{ fontSize: 15, color: '#8a8175', marginTop: 4 }}>{name}氏哲学报告 · 本地测试</div>
+        <div
+          style={{
+            display: 'inline-block', fontSize: 14, background: '#b98a2f', color: '#fff',
+            borderRadius: 20, padding: '2px 14px', marginTop: 18,
+          }}
+        >
+          {naming.traced ? '守正溯源型' : '综合命名型'}
+        </div>
+        <div style={{ fontSize: 40, fontWeight: 900, lineHeight: 1.35, margin: '10px 0 4px' }}>{naming.ism}</div>
+        <div style={{ fontSize: 15, color: '#8a8175' }}>{naming.ismEn}</div>
+        <div style={{ fontSize: 17, lineHeight: 1.8, marginTop: 14 }}>{naming.manifesto}</div>
+        <div style={{ borderTop: '1px solid #e8e0d2', marginTop: 20, paddingTop: 16 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8 }}>思想血缘 Top 3</div>
+          {phils.map((p, i) => (
+            <div key={p.name} style={{ fontSize: 16, lineHeight: 1.7 }}>
+              {i + 1}. {p.name} <span style={{ color: '#2f6f4e', fontWeight: 800 }}>{p.sim}%</span>
+              <span style={{ color: '#8a8175' }}>　「{p.quote}」</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ borderTop: '1px solid #e8e0d2', marginTop: 16, paddingTop: 16, fontSize: 16, lineHeight: 2 }}>
+          <div>政治光谱：{econ} · {auth}</div>
+          <div>环境契合：<span style={{ fontWeight: 800 }}>{fitTotal} 分 · {fitLevel}</span></div>
+        </div>
+        <div style={{ marginTop: 20, fontSize: 13, color: '#8a8175' }}>
+          Philo-Compass · 哲学罗盘 · 凭分享链接查看完整互动报告 · 仅供娱乐
+        </div>
+      </div>
     </div>
   );
 }
 
 function QuestionCard({ mod, text, value, onPick, onBack }: {
-  mod: string; text: string; value: number;
+  mod: string; text: string; value: number | null;
   onPick: (v: number) => void; onBack?: () => void;
 }) {
   return (

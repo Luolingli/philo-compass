@@ -29,8 +29,8 @@ function cosine(a: Vec, b: Vec): number {
   return dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
-/** 思想卷作答(-2..2,长60) → 用户向量 [-2,2] */
-export function scoreThought(answers: number[]): Vec {
+/** 思想卷作答(-2..2,长60,null=未作答按0计) → 用户向量 [-2,2] */
+export function scoreThought(answers: (number | null)[]): Vec {
   const total = new Array(DIM_COUNT).fill(0);
   const max = new Array(DIM_COUNT).fill(0);
   THOUGHT_QUESTIONS.forEach((q, i) => {
@@ -183,7 +183,7 @@ function dimDiffHint(user: Vec, ref: Vec): string {
 
 // ---------- 环境契合度 ----------
 
-export interface FitAxis { label: string; demand: number; mine: number; fit: number }
+export interface FitAxis { label: string; dim: number; demand: number; mine: number; fit: number }
 export interface FitResult { total: number; level: string; advice: string; axes: FitAxis[] }
 
 const ENV_LABEL = ['平等/效率', '自由/权威', '变革/渐进', '个人/集体', '进步/传统', '入世/出世', '意义/荒诞', '实践/沉思', '唯物/唯心', '理性/体验', '普世/本土', '生态/人本'];
@@ -191,13 +191,13 @@ const ENV_LABEL = ['平等/效率', '自由/权威', '变革/渐进', '个人/�
 /** 环境作答(-2..2,长15) + 用户向量 → 契合度 */
 export function scoreFit(
   user: Vec,
-  envAnswers: number[],
+  envAnswers: (number | null)[],
   dims: number[],
   dirs: number[],
 ): FitResult {
   const byDim = new Map<number, number[]>();
   envAnswers.forEach((a, i) => {
-    const demand = a * dirs[i]; // 环境在这维上奖赏的位置
+    const demand = (a ?? 0) * dirs[i]; // 环境在这维上奖赏的位置(null=未作答，按无压力计)
     if (!byDim.has(dims[i])) byDim.set(dims[i], []);
     byDim.get(dims[i])!.push(demand);
   });
@@ -205,7 +205,7 @@ export function scoreFit(
   byDim.forEach((ds, d) => {
     const demand = ds.reduce((x, y) => x + y, 0) / ds.length;
     const gap = Math.abs(user[d] - demand);
-    axes.push({ label: ENV_LABEL[d], demand: Math.round(demand * 10) / 10, mine: Math.round(user[d] * 10) / 10, fit: Math.round((1 - gap / 4) * 100) });
+    axes.push({ label: ENV_LABEL[d], dim: d, demand: Math.round(demand * 10) / 10, mine: Math.round(user[d] * 10) / 10, fit: Math.round((1 - gap / 4) * 100) });
   });
   const total = Math.round(axes.reduce((a, x) => a + x.fit, 0) / Math.max(1, axes.length));
   const level = total >= 75 ? '高度契合' : total >= 55 ? '基本相容' : total >= 35 ? '明显张力' : '疏离逆流';
@@ -222,7 +222,7 @@ export function scoreFit(
 
 // ---------- 分享编码 ----------
 
-export interface SharePayload { n: string; u: Vec; e: number[]; t: number[] }
+export interface SharePayload { n: string; u: Vec; e: (number | null)[]; t: (number | null)[] }
 
 export function encodeShare(p: SharePayload): string {
   const s = JSON.stringify({ n: p.n, u: p.u.map((v) => Math.round(v * 100) / 100), e: p.e, t: p.t });

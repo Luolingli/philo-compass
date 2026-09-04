@@ -102,6 +102,15 @@ button { font-family: inherit; cursor: pointer; }
 .meta { color: var(--muted); font-size: 13px; }
 .bio { font-size: 14px; color: #5a5348; }
 
+.howto { font-size: 14px; color: #5a5348; background: #f6f1e5; border-radius: 8px; padding: 10px 12px; }
+.howto b { color: var(--green); }
+.cardwrap { margin: 14px 0; }
+
+@media (max-width: 640px) {
+  .tbl { font-size: 12px; }
+  .tbl td, .tbl th { padding: 4px 5px; }
+}
+
 .grid { display: grid; grid-template-columns: 1fr; gap: 4px; }
 @media (min-width: 640px) { .grid { grid-template-columns: 1fr 1fr; } }
 .filters { align-items: center; }
